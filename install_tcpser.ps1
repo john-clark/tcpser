@@ -13,7 +13,7 @@ The script performs the following tasks:
 .PARAMETER None
 
 .EXAMPLE
-.\get_latest_software.ps1
+.\install_tcpser.ps1
 
 This example runs the script and starts the installation process by downloading the required software.
 

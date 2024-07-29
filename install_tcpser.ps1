@@ -24,6 +24,7 @@ This example runs the script and starts the installation process by downloading 
 - Full installation of Cygwin is not required for tcpser usage.
 #>
 
+
 # Define the GitHub API URLs for the VICE releases and tcpser repository
 $tcpserRepoUrl = "https://github.com/go4retro/tcpser/archive/refs/heads/master.zip"
 $cygwinBaseUrl = "https://mirror.steadfast.net/cygwin/x86_64/release/cygwin/"
@@ -32,6 +33,76 @@ $cygwinBaseUrl = "https://mirror.steadfast.net/cygwin/x86_64/release/cygwin/"
 $downloadPath = "$env:TEMP"
 $extractPath = "C:\tools"
 
+
+# Check if 7-Zip is installed
+$7zipPath = "C:\Program Files\7-Zip\7z.exe"  # Adjust this path if 7-Zip is installed elsewhere
+if (-Not (Test-Path -Path $7zipPath)) {
+    Write-Host "7-Zip is not installed. Downloading and installing..." -ForegroundColor Red
+
+    # Define the URL for the 7-Zip installer and the output path
+    $installerUrl = "https://www.7-zip.org/a/7z1900-x64.exe"  # Update URL to the latest version if necessary
+    $installerPath = "$env:TEMP\7zInstaller.exe"
+
+    # Download the installer
+    Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+
+    # Execute the installer
+    # Note: /S for silent install, adjust arguments as necessary
+    $process = Start-Process -FilePath $installerPath -Args "/S" -Wait -NoNewWindow -PassThru
+
+    # Check the exit code of the process
+    if ($process.ExitCode -ne 0) {
+	Write-Host "The installation process exited with an error code: $($process.ExitCode)" -ForegroundColor Red
+	exit 1
+    } else {
+ 	Write-Host "7-Zip installation complete." -ForegroundColor Green
+    }
+} else {
+    Write-Host "7-Zip is already installed." -ForegroundColor Green
+}
+
+# Function to extract tar.xz files
+function Expand-7Ziptarxz {
+    param (
+        [string]$FilePath,
+        [string]$ExtractPath
+    )
+
+    $7zipPath = "$env:ProgramFiles\7-Zip\7z.exe"
+    if (-not (Test-Path -Path $7zipPath -PathType Leaf)) {
+        Write-Host "7-Zip executable '$7zipPath' not found."
+        exit 1
+    }
+
+    try {
+        # make sure this is the xz file
+       	if ($FilePath -match '.xz$') {
+            #unpack xz with 7zip		
+            $xzUnpack = & $7zipPath x $FilePath -o"$downloadPath" *>&1
+            if ($xzUnpack) {
+                $tarFilename = $FilePath -replace '\.xz$', ''
+                #make sure tar file
+                if ($tarFilename -match '.tar$') {
+                    # Extract tar
+                    $tarExtract = & $7zipPath x $tarFilename -o"$ExtractPath" *>&1
+                    if ($tarExtract) {
+                        Remove-Item $tarFilename
+                        return $true
+                    } else {
+                        Throw "Failed to extract $tarFilename"
+                    }
+                }
+            } else {
+                Throw "Failed to unpack $xzUnpack"
+            }
+        } else {
+            Throw "Failed to find correct filename $xzFilename"
+        }
+    } catch {
+        Write-Host "Error extracting archive: $_"
+        return $false
+    }
+}
 
 # Function to set the security protocol to TLS 1.2
 function Set-SecurityProtocol {
@@ -59,10 +130,8 @@ New-DirectoryExists -Path $extractPath
 # Set the security protocol
 Set-SecurityProtocol -Protocol Tls12
 
-
 # Display the banner
 Write-Host "Starting Installation - Downloading Requirements" -ForegroundColor White
-
 
 # Download tcpser
 Write-Host "Checking for existing tcpser download..." -ForegroundColor Yellow
@@ -107,10 +176,8 @@ if (-Not (Test-Path -Path $cygwinDllArchivePath)) {
     Write-Host "Cygwin is already downloaded." -ForegroundColor Green
 }
 
-
 # Display completion message
 Write-Host "Downloads Complete - Ready to Extract" -ForegroundColor White
-
 
 # Extract tcpser
 Write-Host "Checking for extracted tcpser dir..." -ForegroundColor Yellow
@@ -137,32 +204,36 @@ if (-Not (Test-Path -Path "$tcpserExtractPath\tcpser.exe")) {
     Write-Host "tcpser already extracted." -ForegroundColor Green
 }
 
-# Extract Cygwin DLL using tar
-Write-Host "Checking for extracted cygwin download..." -ForegroundColor Yellow
-$cygwinExtractPath = "$extractPath\cygwin"
+# Extract Cygwin
+$cygwinExtractPath = "$downloadPath\cygwin"
+Write-Host "Checking for cygwin extract folder..." -ForegroundColor Yellow
 # Check if extracted folder exists
-if (-Not (Test-Path -Path "$cygwinExtractPath")) {
-    Write-Host "Extracting cygwin1.dll..." -ForegroundColor Blue
-	# create folder for tar to use
-    $null = New-Item -ItemType Directory -Path $cygwinExtractPath
-	# 
-	if (Test-Path -Path "$cygwinDllArchivePath") {
-		Try {
-			tar -xf $cygwinDllArchivePath -C $cygwinExtractPath
-			if (-Not (Test-Path -Path "$cygwinExtractPath\usr\bin\cygwin1.dll")) {
-				Throw "Extraction failed: cygwin1.dll not found."
-			}
-			Write-Host "cygwin1.dll extraction complete." -ForegroundColor Green
-		} Catch {
-			Write-Error "Failed to extract cygwin1.dll: $_"
-			exit 1
-		}
-	} else {
-        Write-Host "Cygwin download path does not exist." -ForegroundColor Red
-		exit 1
+if (Test-Path $cygwinExtractPath) {
+    # look for cygwin dir in temp
+    Write-Host "Cygwin extract path found." -ForegroundColor Green
+    if (-Not (Test-Path -Path "$cygwinExtractPath\usr\bin\cygwin1.dll")) {
+        Throw "Extracted file: cygwin1.dll not found."
     }
+    Write-Host "cygwin1.dll extract file found." -ForegroundColor Green
 } else {
-    Write-Host "Cygwin DLL already extracted." -ForegroundColor Green
+    #extracted folder cygwin does not exist
+    Write-Host "Extracting cygwin1.dll..." -ForegroundColor Blue
+    if (Test-Path -Path $cygwinDllArchivePath) {
+        #looking for download
+        Write-Host "Cygwin download exists." -ForegroundColor Red
+	    #tar -xaf $cygwinDllArchivePath -C $cygwinExtractPath
+	    $tarxzout = & Expand-7Ziptarxz -FilePath $cygwinDLLArchivePath -ExtractPath $cygwinExtractPath 
+        if ( $tarxzout ) {
+            Write-Host "Extraction successful!"
+        } else {
+            Throw "Extraction failed."
+        }
+        if (Test-Path -Path "$cygwinExtractPath\usr\bin\cygwin1.dll") {
+            Write-Host "cygwin1.dll extraction complete." -ForegroundColor Green
+        } else {
+       	    Throw "Extraction failed: cygwin1.dll not found."
+        }
+    }
 }
 
 # Copy cygwin1.dll to the tcpser folder if it does not exist
@@ -173,7 +244,7 @@ if (-Not (Test-Path -Path $destinationDllPath)) {
     $cygwinDllPath = "$cygwinExtractPath\usr\bin\cygwin1.dll"
     if (Test-Path -Path $cygwinDllPath) {
         Write-Host "Copying cygwin1.dll to tcpser folder..." -ForegroundColor Blue
-		Try {
+	    Try {
             Copy-Item -Path $cygwinDllPath -Destination $destinationDllPath -Force
             Write-Host "cygwin1.dll copy complete." -ForegroundColor Green
         } Catch {
@@ -186,7 +257,6 @@ if (-Not (Test-Path -Path $destinationDllPath)) {
 } else {
     Write-Host "cygwin1.dll already exists in tcpser folder." -ForegroundColor Green
 }
-
 
 # List of expected downloaded files
 $downloadedFiles = @(

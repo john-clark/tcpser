@@ -286,15 +286,15 @@ if ($allDownloadsCompleted) {
 
     # Check if the command executed successfully
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Command failed to execute."
+        Write-Host "Command failed to execute." --ForegroundColor Red
         exit 1
     }
 
     # Check if the output contains the word "Usage:"
     if ($output -match "Usage:") {
-        Write-Host "Command executed successfully and returned usage information."
+        Write-Host "Tcpser executed successfully and returned usage information." --ForegroundColor Green
     } else {
-        Write-Host "Command did not return the expected usage information."
+        Write-Host "Tcpser did not return the expected usage information." --ForegroundColor Red
         exit 1
     }
 
